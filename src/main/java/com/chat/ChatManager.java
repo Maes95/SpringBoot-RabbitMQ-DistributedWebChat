@@ -1,6 +1,5 @@
 package com.chat;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,24 +21,23 @@ import org.json.JSONObject;
 @ServerEndpoint("/chat")
 public class ChatManager {
 
+    private static String EXCHANGE_NAME = "MANAGER";
     private static final Map<String, Map<String, User>> rooms = new ConcurrentHashMap<>();
     private static final String DUPLICATE_MSG = "{\"type\":\"system\",\"message\":\"Ya existe un usuario con ese nombre\"}";
 
     private User user;
 
     @OnOpen
-    public void open(Session session){
-        this.user = new User(session);
-    }
+    public void open(Session session){}
 
     @OnMessage
     public void handleMessage(Session session, String message) throws Exception {
 
-        if(this.user.isValid()){
+        if(this.user != null){
             // Broadcast message
             user.broadcast(message);
         }else{
-            newUser(message);
+            newUser(session,message);
         }
 
     }
@@ -47,7 +45,7 @@ public class ChatManager {
     @OnClose
     public void close(Session session){
 
-        if(this.user.isValid()){
+        if(this.user != null){
             Map<String, User> chat = rooms.get(this.user.getChat());
             chat.remove(this.user.getName());
             if(chat.isEmpty()){
@@ -67,7 +65,7 @@ public class ChatManager {
 
     }
 
-    private void newUser(String message) throws Exception{
+    private void newUser(Session session, String message) throws Exception{
 
         JSONObject jsonMessage = new JSONObject(message);
 
@@ -81,7 +79,15 @@ public class ChatManager {
                 // Chat doesn't exist
                 rooms.put(chat, new ConcurrentHashMap<>());
             }
-            this.user.setUp(name, chat);
+            ConnectionFactory factory = new ConnectionFactory();
+            factory.setHost("localhost");
+            Connection connection = factory.newConnection();
+            Channel channel = connection.createChannel();
+            this.user = new User(name, chat, session, channel, EXCHANGE_NAME);
+            channel.exchangeDeclare(EXCHANGE_NAME, "topic");
+            String queueName = channel.queueDeclare().getQueue();
+            channel.queueBind(queueName, EXCHANGE_NAME, chat);
+            channel.basicConsume(queueName, true, this.user);
             rooms.get(chat).put(name, this.user);
         }
 
