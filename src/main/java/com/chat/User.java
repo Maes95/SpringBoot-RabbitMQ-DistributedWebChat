@@ -1,65 +1,105 @@
 package com.chat;
 
-import com.rabbitmq.client.*;
-
 import java.io.IOException;
+import java.util.concurrent.TimeoutException;
 
+import javax.websocket.OnClose;
+import javax.websocket.OnError;
+import javax.websocket.OnMessage;
+import javax.websocket.OnOpen;
 import javax.websocket.Session;
+import javax.websocket.server.ServerEndpoint;
 
-public class User extends DefaultConsumer {
+import com.rabbitmq.client.AlreadyClosedException;
+import com.rabbitmq.client.Channel;
 
-	private final String name;
-	private final String chat;
-	private final String exchange;
-	private final Session session;
+import com.rabbitmq.client.Connection;
+import org.json.JSONObject;
 
-	public User(String name, String chat, Session session, Channel channel, String exchange) {
-		super(channel);
-		this.session = session;
-        this.name = name;
-        this.chat = chat;
-        this.exchange = exchange;
-	}
+@ServerEndpoint("/chat")
+public class User extends UserConsumer{
 
-	@Override
-	public void handleDelivery(String consumerTag, Envelope envelope, AMQP.BasicProperties properties, byte[] body)
-			throws IOException {
-		String message = new String(body, "UTF-8");
-		System.out.println(" [x] Received '" + envelope.getRoutingKey() + "':'" + message + "'" + " -> MY CHAT: "+chat);
-		send(message);
-	}
+    private static String EXCHANGE_NAME = "MANAGER";
+    private static final String DUPLICATE_MSG = "{\"type\":\"system\",\"message\":\"Ya existe un usuario con ese nombre\"}";
 
-	public synchronized void broadcast(String message){
+    private Session session;
+    private String name;
+    private String chat;
+    private ChatManager manager;
+
+    @OnOpen
+    public void open(Session session){
+        this.session = session;
+        this.manager = ChatManager.getInstance();
+    }
+
+    @OnMessage
+    public void handleMessage(Session session, String message){
+
+        if(this.name != null){
+            // Broadcast message
             try {
-					this.getChannel().basicPublish(this.exchange, chat, null, message.getBytes());
-					System.out.println(" [x] Sent '" + chat + "':'" + message + "'");
+                this.channel.basicPublish(EXCHANGE_NAME, chat, null, message.getBytes());
             } catch (IOException e) {
-                    e.printStackTrace();
+                e.printStackTrace();
+            } catch (NullPointerException e){
+                System.err.println("Invalid channel");
             }
-	}
+        }else{
+            // Init message
+            newUser(message);
+        }
 
-	public void send(String message){
-		try {
-			session.getBasicRemote().sendText(message);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-	}
+    }
 
-	public void disconnect(){
-		try {
-			this.getChannel().close();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
-	
-	public String getChat(){
-		return this.chat;
-	}
-	
-	public String getName(){
-		return this.name;
-	}
+    @OnClose
+    public void close(Session session) throws IOException, TimeoutException {
+
+        if(this.name != null){
+            manager.deleteUser(name, chat);
+            try{
+                this.connection.close();
+            }catch (AlreadyClosedException e){
+                System.out.println("Channel already closed");
+            }
+        }
+
+    }
+
+    @OnError
+    public void onError(Session session, Throwable thr) {
+        System.err.println("Client "+session.getId()+" error: "+thr.getMessage());
+    }
+
+    public void handleQueueMessage(String message){
+        send(message);
+    }
+
+    public void send(String message){
+        try {
+            session.getBasicRemote().sendText(message);
+        } catch (IOException e) {
+            System.err.println("Can't send message to user");
+        }
+    }
+
+    private void newUser(String message){
+
+        JSONObject jsonMessage = new JSONObject(message);
+
+        this.chat = jsonMessage.getString("chat");
+        this.name = jsonMessage.getString("name");
+
+        if( manager.userExist(name) ){
+            send(DUPLICATE_MSG);
+        }else{
+            this.manager.subscribe(name, chat, this);
+        }
+    }
+
+    public void setConection(Connection conection, Channel channel){
+        this.connection = conection;
+        this.channel = channel;
+    }
 
 }

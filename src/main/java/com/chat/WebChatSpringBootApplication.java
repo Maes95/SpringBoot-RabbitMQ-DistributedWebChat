@@ -20,8 +20,8 @@ public class WebChatSpringBootApplication extends SpringBootServletInitializer{
 	}
 
 	@Bean
-	public ChatManager reverseWebSocketEndpoint() {
-		return new ChatManager();
+	public User reverseWebSocketEndpoint() {
+		return new User();
 	}
 
 	@Bean

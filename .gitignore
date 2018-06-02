@@ -28,3 +28,6 @@ demo.iml
 mvnw
 mvnw.cmd
 target
+*.pem
+logs
+haproxy.cfg
