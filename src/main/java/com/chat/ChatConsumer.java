@@ -5,7 +5,7 @@ import com.rabbitmq.client.AMQP.BasicProperties;
 
 import java.io.IOException;
 
-public abstract class UserConsumer implements Consumer {
+public abstract class ChatConsumer implements Consumer, Publisher{
 
     protected Channel channel;
     protected Connection connection;
@@ -25,7 +25,5 @@ public abstract class UserConsumer implements Consumer {
     }
 
     public abstract void handleQueueMessage(String message);
-
-    public abstract void setConection(Connection conection, Channel channel);
 
 }

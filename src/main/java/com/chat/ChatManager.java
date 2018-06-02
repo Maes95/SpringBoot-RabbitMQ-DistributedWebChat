@@ -13,64 +13,50 @@ import java.util.concurrent.TimeoutException;
 
 public class ChatManager {
 
-    private static String EXCHANGE_NAME = "MANAGER";
     private static ChatManager ourInstance = new ChatManager();
     public static ChatManager getInstance() {
         return ourInstance;
     }
 
-    private Map<String, Set<String>> rooms;
-    private ConnectionFactory factory;
+    private Map<String, Chat> rooms;
 
     private ChatManager() {
         this.rooms = new ConcurrentHashMap<>();
-        this.factory = new ConnectionFactory();
-        this.factory.setHost("localhost");
     }
 
-    private void addUser(String name, String chat){
-        if(!rooms.containsKey(chat)){
-            // Chat doesn't exist
-            rooms.put(chat, new ConcurrentSkipListSet());
-        }
-        rooms.get(chat).add(name);
+    public Publisher subscribe(User user){
+        Chat chat = getChat(user.getChat());
+        chat.subscribe(user);
+        return chat;
     }
 
-    public Channel subscribe(String name, String chat, UserConsumer user){
-        Channel channel = null;
-        Connection connection = null;
-        try {
-            connection = factory.newConnection();
-            channel = connection.createChannel();
-            channel.exchangeDeclare(EXCHANGE_NAME, "topic");
-            String queue = channel.queueDeclare().getQueue();
-            channel.queueBind(queue, EXCHANGE_NAME, chat);
-            channel.basicConsume(queue, true, user);
-        } catch (IOException e) {
-            System.err.println("Can't subscribe user to chat: IOException");
-        } catch (TimeoutException e){
-            System.err.println("Can't subscribe user to chat: Timeout");
-        } finally {
-            if(channel != null && connection != null){
-                user.setConection(connection, channel);
-                addUser(name, chat);
+    public void unSubscribe(User user){
+        String chatName = user.getChat();
+        Chat room = rooms.get(chatName);
+        System.out.println("SIZE: "+rooms.size());
+        System.out.println("AQUI: "+chatName+" "+room);
+
+        if(room != null){
+            room.unSubscribe(user);
+            if(room.isEmpty()){
+                // Remove chat room if it's empty
+                System.out.println("DELETE: "+chatName);
+                rooms.remove(chatName);
+                room.destroy();
             }
-        }
-        return channel;
-    }
-
-    public void deleteUser(String name, String chat){
-        Set<String> room = rooms.get(chat);
-        room.remove(name);
-        if(room.isEmpty()){
-            // Remove chat room if it's empty
-            rooms.remove(chat);
         }
     }
 
     public boolean userExist(String user_name){
         return rooms.values().stream().anyMatch((chat) ->
-                chat.contains(user_name)
+                chat.exist(user_name)
         );
+    }
+
+    private synchronized Chat getChat(String chatName){
+        if(!rooms.containsKey(chatName)){
+            this.rooms.put(chatName, new Chat(chatName));
+        }
+        return rooms.get(chatName);
     }
 }

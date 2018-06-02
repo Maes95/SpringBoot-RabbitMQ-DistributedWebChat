@@ -9,15 +9,10 @@ import javax.websocket.OnMessage;
 import javax.websocket.OnOpen;
 import javax.websocket.Session;
 import javax.websocket.server.ServerEndpoint;
-
-import com.rabbitmq.client.AlreadyClosedException;
-import com.rabbitmq.client.Channel;
-
-import com.rabbitmq.client.Connection;
 import org.json.JSONObject;
 
 @ServerEndpoint("/chat")
-public class User extends UserConsumer{
+public class User{
 
     private static String EXCHANGE_NAME = "MANAGER";
     private static final String DUPLICATE_MSG = "{\"type\":\"system\",\"message\":\"Ya existe un usuario con ese nombre\"}";
@@ -26,6 +21,7 @@ public class User extends UserConsumer{
     private String name;
     private String chat;
     private ChatManager manager;
+    private Publisher publisher;
 
     @OnOpen
     public void open(Session session){
@@ -38,13 +34,7 @@ public class User extends UserConsumer{
 
         if(this.name != null){
             // Broadcast message
-            try {
-                this.channel.basicPublish(EXCHANGE_NAME, chat, null, message.getBytes());
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (NullPointerException e){
-                System.err.println("Invalid channel");
-            }
+            if(this.publisher != null) this.publisher.publish(message);
         }else{
             // Init message
             newUser(message);
@@ -56,12 +46,7 @@ public class User extends UserConsumer{
     public void close(Session session) throws IOException, TimeoutException {
 
         if(this.name != null){
-            manager.deleteUser(name, chat);
-            try{
-                this.connection.close();
-            }catch (AlreadyClosedException e){
-                System.out.println("Channel already closed");
-            }
+            manager.unSubscribe(this);
         }
 
     }
@@ -71,15 +56,11 @@ public class User extends UserConsumer{
         System.err.println("Client "+session.getId()+" error: "+thr.getMessage());
     }
 
-    public void handleQueueMessage(String message){
-        send(message);
-    }
-
     public void send(String message){
         try {
             session.getBasicRemote().sendText(message);
-        } catch (IOException e) {
-            System.err.println("Can't send message to user");
+        } catch (Exception e) {
+            //System.err.println("Can't send message to user");
         }
     }
 
@@ -93,13 +74,16 @@ public class User extends UserConsumer{
         if( manager.userExist(name) ){
             send(DUPLICATE_MSG);
         }else{
-            this.manager.subscribe(name, chat, this);
+            this.publisher = this.manager.subscribe(this);
         }
     }
 
-    public void setConection(Connection conection, Channel channel){
-        this.connection = conection;
-        this.channel = channel;
+    public String getName(){
+        return this.name;
+    }
+
+    public String getChat(){
+        return this.chat;
     }
 
 }
