@@ -53,13 +53,13 @@ public class User extends UserConsumer{
     }
 
     @OnClose
-    public void close(Session session) throws IOException, TimeoutException {
+    public void close(Session session){
 
         if(this.name != null){
             manager.deleteUser(name, chat);
             try{
                 this.connection.close();
-            }catch (AlreadyClosedException e){
+            }catch (AlreadyClosedException | IOException e){
                 System.out.println("Channel already closed");
             }
         }
@@ -68,11 +68,8 @@ public class User extends UserConsumer{
 
     @OnError
     public void onError(Session session, Throwable thr) {
+        thr.printStackTrace();
         System.err.println("Client "+session.getId()+" error: "+thr.getMessage());
-    }
-
-    public void handleQueueMessage(String message){
-        send(message);
     }
 
     public void send(String message){

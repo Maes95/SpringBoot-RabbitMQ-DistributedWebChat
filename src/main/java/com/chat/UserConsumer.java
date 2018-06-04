@@ -21,10 +21,10 @@ public abstract class UserConsumer implements Consumer {
     public void handleRecoverOk(String consumerTag) {}
 
     public void handleDelivery(String consumerTag, Envelope envelope, BasicProperties properties, byte[] body) throws IOException{
-        this.handleQueueMessage(new String(body, "UTF-8"));
+        this.send(new String(body, "UTF-8"));
     }
 
-    public abstract void handleQueueMessage(String message);
+    public abstract void send(String message);
 
     public abstract void setConection(Connection conection, Channel channel);
 
